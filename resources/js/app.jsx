@@ -84,6 +84,73 @@ function PixelHero({ bannerImage, onBannerChange }) {
     </div>;
 }
 
+function ContributionCalendar({ snippets }) {
+    const weeks = useMemo(() => {
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
+        const firstDay = new Date(today);
+        firstDay.setDate(firstDay.getDate() - 364);
+        const firstWeek = new Date(firstDay);
+        firstWeek.setDate(firstWeek.getDate() - ((firstWeek.getDay() + 6) % 7));
+
+        const counts = new Map();
+        snippets
+            .filter(snippet => !starterSnippets.some(starter => starter.id === snippet.id))
+            .forEach(snippet => {
+                const date = String(snippet.createdAt ?? '').slice(0, 10);
+                if (date) counts.set(date, (counts.get(date) ?? 0) + 1);
+            });
+
+        const dateKey = date => [date.getFullYear(), String(date.getMonth() + 1).padStart(2, '0'), String(date.getDate()).padStart(2, '0')].join('-');
+        const result = [];
+        for (let weekStart = new Date(firstWeek); weekStart <= today; weekStart.setDate(weekStart.getDate() + 7)) {
+            const days = Array.from({ length: 7 }, (_, index) => {
+                const date = new Date(weekStart);
+                date.setDate(weekStart.getDate() + index);
+                const inRange = date >= firstDay && date <= today;
+                return { date, count: inRange ? counts.get(dateKey(date)) ?? 0 : 0, inRange };
+            });
+            const monthStart = days.find(day => day.date.getDate() === 1);
+            const firstInRange = days.find(day => day.inRange);
+            const labelDate = monthStart?.date ?? (result.length === 0 ? firstInRange?.date : null);
+            result.push({ days, label: labelDate ? labelDate.toLocaleDateString('en', { month: 'short' }) : '' });
+        }
+        return result;
+    }, [snippets]);
+
+    const total = weeks.reduce((sum, week) => sum + week.days.reduce((weekTotal, day) => weekTotal + day.count, 0), 0);
+    const colors = ['#edf1e8', '#e7f3cd', '#d2ee9a', '#c6f36b', '#8ebf3d'];
+    const legendLabels = ['No snippets', '1 snippet', '2 snippets', '3 to 4 snippets', '5 or more snippets'];
+    const level = count => count === 0 ? 0 : count === 1 ? 1 : count === 2 ? 2 : count <= 4 ? 3 : 4;
+    const gridStyle = { gridTemplateColumns: `repeat(${weeks.length}, 12px)` };
+
+    return <section className="panel p-5 md:p-6">
+        <div className="flex flex-wrap items-end justify-between gap-2">
+            <div><div className="eyebrow">CONTRIBUTIONS</div><h2 className="mt-1 font-display text-lg font-semibold">Snippet activity</h2></div>
+            <div className="text-xs font-semibold">{total} snippets added in the past year</div>
+        </div>
+        <p className="mt-2 text-xs">Each square represents one day. Brighter squares mean more snippets were added.</p>
+        <div className="mt-5 overflow-x-auto pb-2">
+            <div className="flex min-w-max gap-2">
+                <div className="grid grid-rows-[16px_repeat(7,12px)] gap-y-1 text-[9px] font-semibold">
+                    <span></span><span>Mon</span><span></span><span>Wed</span><span></span><span>Fri</span><span></span><span></span>
+                </div>
+                <div className="grid grid-flow-col grid-rows-[16px_repeat(7,12px)] gap-x-1 gap-y-1" style={gridStyle}>
+                    {weeks.map((week, weekIndex) => <React.Fragment key={weekIndex}>
+                        <span className="whitespace-nowrap text-[9px] font-semibold">{week.label}</span>
+                        {week.days.map(day => <span key={dateKeyForCalendar(day.date)} title={day.inRange ? `${day.count} snippet${day.count === 1 ? '' : 's'} on ${day.date.toLocaleDateString()}` : 'Outside the past-year range'} aria-label={day.inRange ? `${day.count} snippets on ${day.date.toLocaleDateString()}` : undefined} className="h-3 w-3 rounded-[3px]" style={{ backgroundColor: colors[level(day.count)], opacity: day.inRange ? 1 : 0.45 }} />)}
+                    </React.Fragment>)}
+                </div>
+            </div>
+        </div>
+        <div className="mt-1 flex items-center justify-end gap-1.5 text-[10px] font-semibold"><span>Less</span>{colors.map((color, index) => <span key={color} className="h-3 w-3 rounded-[3px]" style={{ backgroundColor: color }} title={legendLabels[index]} />)}<span>More</span></div>
+    </section>;
+}
+
+function dateKeyForCalendar(date) {
+    return [date.getFullYear(), String(date.getMonth() + 1).padStart(2, '0'), String(date.getDate()).padStart(2, '0')].join('-');
+}
+
 function App() {
     const [data, setData] = useState(defaultState);
     const [databaseReady, setDatabaseReady] = useState(false);
@@ -232,7 +299,7 @@ function App() {
                 
 
                 {page === 'stacks' && <section className="fade-in space-y-6"><div className="flex flex-wrap items-center justify-between gap-4"><h1 className="font-display text-3xl font-bold">{activeStack ? activeStack.name : 'Stack library'}</h1>{activeStack && <button onClick={() => setModal({ type: 'snippet' })} className="lime-button rounded-lg px-3 py-2.5 text-xs font-semibold">+ New snippet</button>}</div>{!activeStack && <div className="flex flex-wrap gap-2">{['All', 'Frontend', 'Backend', 'Database', 'Workflow', 'Engineering'].map(item => <button key={item} onClick={() => setCategory(item)} className={`rounded-lg px-3 py-2 text-[11px] ${category === item ? 'bg-[#c6f36b] font-semibold text-[#141710]' : 'ghost-button'}`}>{item}</button>)}</div>}{!activeStack && <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">{data.stacks.filter(item => category === 'All' || item.category === category).map(stack => <button key={stack.id} onClick={() => setActiveStack(stack)} className="panel stack-card flex items-center gap-4 p-4 text-left"><StackMark stack={stack} className="h-12 w-12"/><span className="min-w-0 flex-1"><span className="block text-sm font-semibold">{stack.name}</span><span className="mt-1 block text-[10px] text-[#858e87]">{stack.category}</span></span><span className="text-xs text-[#8c958c]">{stack.entries + data.snippets.filter(note => note.stacks.includes(stack.id) && !starterSnippets.some(seed => seed.id === note.id)).length} →</span></button>)}</div>}{activeStack && <div className="space-y-4"><label className="relative block max-w-xl"><span className="absolute left-3 top-1/2 -translate-y-1/2 text-[#111111]">⌕</span><input value={search} onChange={event => setSearch(event.target.value)} placeholder={`Search ${activeStack.name}...`} className="input-dark w-full rounded-xl py-3 pl-10 pr-4 text-xs" /></label><div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">{filteredSnippets.map(note => <article key={note.id} className="panel flex min-h-[230px] flex-col overflow-hidden"><div className="flex h-24 items-center justify-center border-b border-[#2b302c] bg-[#1c211d]">{note.image ? <img src={note.image} alt="Snippet preview" className="h-full w-full object-cover"/> : <span className="font-mono text-xs text-[#768077]">{note.code.split('\n').slice(0, 2).join(' ').slice(0, 55)}...</span>}</div><div className="flex flex-1 flex-col p-4"><div className="font-display text-sm font-semibold">{note.title}</div><p className="mt-1 line-clamp-2 text-[10px] leading-5 text-[#8f9890]">{note.description}</p><div className="mt-auto flex items-center justify-between gap-2 pt-4"> <div className="flex gap-1">{note.stacks.map(stackId => { const stack = data.stacks.find(item => item.id === stackId); return stack && <span key={stackId} className="rounded-md px-2 py-1 text-[9px]" style={{ color: stack.color, background: `${stack.color}18` }}>{stack.name}</span>; })}</div><button onClick={() => setModal({ type: 'snippet-view', snippet: note })} className="text-[10px] text-[#c6f36b]">Open →</button></div></div></article>)}</div>{!filteredSnippets.length && <div className="panel p-10 text-center text-sm text-[#8f9890]">No notes match that search yet. Add your first snippet to this stack.</div>}</div>}</section>}
-                {page === 'progress' && <section className="fade-in space-y-6"><div><div className="eyebrow mb-2">YOUR LIBRARY</div><h1 className="font-display text-3xl font-semibold">Progress</h1><p className="mt-2 text-sm">A quick view of your saved snippets and tech stacks.</p></div><div className="grid gap-3 sm:grid-cols-3"><div className="panel p-5"><div className="eyebrow">SNIPPETS SAVED</div><div className="mt-3 font-display text-4xl font-semibold">{data.snippets.length}</div></div><div className="panel p-5"><div className="eyebrow">TECH STACKS</div><div className="mt-3 font-display text-4xl font-semibold">{data.stacks.length}</div></div><div className="panel p-5"><div className="eyebrow">YOUR NOTES</div><div className="mt-3 font-display text-4xl font-semibold">{data.snippets.filter(note => !starterSnippets.some(seed => seed.id === note.id)).length}</div><div className="mt-1 text-[10px]">Snippets you added</div></div></div><div className="panel p-5 md:p-6"><div className="flex flex-wrap items-end justify-between gap-3"><div><div className="eyebrow">NOTES BY STACK</div><h2 className="mt-1 font-display text-lg font-semibold">Your reference library</h2></div><button onClick={exportBackup} className="ghost-button rounded-lg px-3 py-2 text-[10px]">Export my data</button></div><div className="mt-6 space-y-4">{data.stacks.map(stack => { const count = data.snippets.filter(note => note.stacks.includes(stack.id)).length; const max = Math.max(...data.stacks.map(item => data.snippets.filter(note => note.stacks.includes(item.id)).length), 1); return <div key={stack.id} className="grid grid-cols-[100px_1fr_35px] items-center gap-3"><div className="truncate text-[11px] font-semibold">{stack.name}</div><div className="progress-track h-2 overflow-hidden rounded-full"><div className="h-full rounded-full transition-all" style={{ width: (count / max * 100) + '%', background: '#a8d443' }}></div></div><div className="text-right font-mono text-[10px]">{count}</div></div>; })}</div></div><div className="panel p-5"><div className="eyebrow">RECENT SNIPPETS</div>{data.snippets.length ? <div className="mt-3 space-y-2">{data.snippets.slice(0, 5).map(note => <div key={note.id} className="rounded-lg border border-[#e3e8e3] px-3 py-2.5 text-xs font-semibold">{note.title}</div>)}</div> : <p className="mt-2 text-xs">Your saved snippets will show up here.</p>}</div><div className="flex flex-wrap gap-2"><button onClick={exportBackup} className="ghost-button rounded-lg px-3 py-2 text-[10px]">Download backup</button><button onClick={() => setModal({ type: 'import' })} className="ghost-button rounded-lg px-3 py-2 text-[10px]">Restore backup</button><button onClick={() => { if (confirm('Reset all local DevBrain Studio data? This cannot be undone unless you exported a backup.')) { localStorage.removeItem('devbrain-studio-v1'); setData(defaultState); } }} className="ghost-button rounded-lg px-3 py-2 text-[10px]">Reset local data</button></div></section>}
+                {page === 'progress' && <section className="fade-in space-y-6"><div><div className="eyebrow mb-2">YOUR LIBRARY</div><h1 className="font-display text-3xl font-semibold">Progress</h1><p className="mt-2 text-sm">A quick view of your saved snippets and tech stacks.</p></div><div className="grid gap-3 sm:grid-cols-3"><div className="panel p-5"><div className="eyebrow">SNIPPETS SAVED</div><div className="mt-3 font-display text-4xl font-semibold">{data.snippets.length}</div></div><div className="panel p-5"><div className="eyebrow">TECH STACKS</div><div className="mt-3 font-display text-4xl font-semibold">{data.stacks.length}</div></div><div className="panel p-5"><div className="eyebrow">YOUR NOTES</div><div className="mt-3 font-display text-4xl font-semibold">{data.snippets.filter(note => !starterSnippets.some(seed => seed.id === note.id)).length}</div><div className="mt-1 text-[10px]">Snippets you added</div></div></div><div className="panel p-5 md:p-6"><div className="flex flex-wrap items-end justify-between gap-3"><div><div className="eyebrow">NOTES BY STACK</div><h2 className="mt-1 font-display text-lg font-semibold">Your reference library</h2></div><button onClick={exportBackup} className="ghost-button rounded-lg px-3 py-2 text-[10px]">Export my data</button></div><div className="mt-6 space-y-4">{data.stacks.map(stack => { const count = data.snippets.filter(note => note.stacks.includes(stack.id)).length; const max = Math.max(...data.stacks.map(item => data.snippets.filter(note => note.stacks.includes(item.id)).length), 1); return <div key={stack.id} className="grid grid-cols-[100px_1fr_35px] items-center gap-3"><div className="truncate text-[11px] font-semibold">{stack.name}</div><div className="progress-track h-2 overflow-hidden rounded-full"><div className="h-full rounded-full transition-all" style={{ width: (count / max * 100) + '%', background: '#a8d443' }}></div></div><div className="text-right font-mono text-[10px]">{count}</div></div>; })}</div></div><ContributionCalendar snippets={data.snippets}/></section>}
             </main>
             <footer className="flex flex-wrap items-center justify-between gap-2 border-t border-[#272b28] px-5 py-4 text-[10px] text-[#626a63] md:px-8"><span>DEV BRAIN STUDIO <span className="mx-1.5">·</span> BUILT FOR YOUR NEXT STEP</span><span>Local-first developer workspace</span></footer>
         </div>
