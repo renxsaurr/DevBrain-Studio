@@ -1,0 +1,16 @@
+<!-- Placeholder banner art. Replace this file with your own image, keeping this filename. -->
+<svg xmlns="http://www.w3.org/2000/svg" width="1600" height="300" viewBox="0 0 1600 300">
+  <rect width="1600" height="300" fill="#79c8f3"/>
+  <g fill="#c8f2fa">
+    <path d="M105 58h110V38h45v20h45v20H105zM660 75h135V55h55v20h42v20H660zM1130 43h155V23h60v20h52v20h-267z"/>
+    <path d="M390 30h65V15h32v15h34v16H390zM900 30h88V14h40v16h36v17H900z"/>
+  </g>
+  <path fill="#a7d968" d="M0 176h142v-19h95v-18h82v18h106v-20h102v19h89v-16h111v17h102v-19h92v19h104v-16h94v16h112v-18h106v16h63v145H0z"/>
+  <path fill="#77b84d" d="M0 210h102v-17h114v15h92v-21h107v17h116v-14h83v17h112v-20h105v19h106v-15h95v17h117v-20h106v18h135v97H0z"/>
+  <path fill="#4d913c" d="M0 246h138v-14h110v15h123v-13h99v16h123v-18h111v16h118v-13h100v16h111v-15h126v17h130v47H0z"/>
+  <path fill="#397a35" d="M0 275h160v-12h129v13h120v-11h135v12h125v-15h130v15h116v-12h139v14h140v-12h150v33H0z"/>
+  <g fill="#f6df70">
+    <rect x="115" y="223" width="6" height="6"/><rect x="287" y="260" width="6" height="6"/><rect x="417" y="202" width="6" height="6"/><rect x="590" y="245" width="6" height="6"/><rect x="785" y="219" width="6" height="6"/><rect x="975" y="262" width="6" height="6"/><rect x="1152" y="220" width="6" height="6"/><rect x="1379" y="249" width="6" height="6"/><rect x="1511" y="205" width="6" height="6"/>
+  </g>
+  <g fill="#edf9f6"><rect x="41" y="118" width="9" height="9"/><rect x="323" y="144" width="8" height="8"/><rect x="545" y="115" width="9" height="9"/><rect x="870" y="144" width="8" height="8"/><rect x="1071" y="116" width="9" height="9"/><rect x="1458" y="137" width="8" height="8"/></g>
+</svg>
