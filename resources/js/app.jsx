@@ -18,15 +18,25 @@ const starterSnippets = [
     { id: 's5', title: 'SQL: find recent orders', description: 'Sort newest records first and limit the result.', code: 'SELECT id, total, created_at\nFROM orders\nWHERE user_id = ?\nORDER BY created_at DESC\nLIMIT 20;', stacks: ['sql'], createdAt: '2026-09-15' },
 ];
 
+const starterCategories = ['Frontend', 'Backend', 'Database', 'Workflow', 'Engineering'];
+
 const defaultState = {
     stacks: starterStacks,
     snippets: starterSnippets,
+    categories: starterCategories,
 };
 
 function normalizeWorkspace(saved = {}) {
+    const stacks = Array.isArray(saved.stacks) ? saved.stacks : defaultState.stacks;
+    const categories = [...new Set([
+        ...starterCategories,
+        ...(Array.isArray(saved.categories) ? saved.categories : []),
+        ...stacks.map(stack => stack.category).filter(Boolean),
+    ])];
     return {
-        stacks: Array.isArray(saved.stacks) ? saved.stacks : defaultState.stacks,
+        stacks,
         snippets: Array.isArray(saved.snippets) ? saved.snippets : defaultState.snippets,
+        categories,
         ...(typeof saved.bannerImage === 'string' ? { bannerImage: saved.bannerImage } : {}),
     };
 }
@@ -151,6 +161,136 @@ function dateKeyForCalendar(date) {
     return [date.getFullYear(), String(date.getMonth() + 1).padStart(2, '0'), String(date.getDate()).padStart(2, '0')].join('-');
 }
 
+const codeTypes = new Set(('bigint boolean bool char date decimal double float int integer json number numeric object string text timestamp uuid varchar void').split(' '));
+const codeTokenPattern = /(\/\*[\s\S]*?\*\/|\/\/[^\n]*|--[^\n]*|#[^\n]*|"(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*'|`(?:\\.|[^`\\])*`|\b(?:add|alter|as|async|await|begin|break|by|case|catch|check|class|const|constraint|create|default|delete|desc|do|drop|else|end|export|extends|false|finally|for|from|function|if|import|in|index|insert|into|is|join|key|let|limit|not|null|of|on|or|order|primary|references|return|select|set|static|table|then|throw|true|try|type|update|use|values|var|where|while)\b|\b(?:bigint|boolean|bool|char|date|decimal|double|float|int|integer|json|number|numeric|object|string|text|timestamp|uuid|varchar|void)\b|\b\d+(?:\.\d+)?\b)/gi;
+
+function codeTokenClass(token) {
+    if (/^(\/\*|\/\/|--|#)/.test(token)) return 'syntax-comment';
+    if (/^["'`]/.test(token)) return 'syntax-string';
+    if (/^\d/.test(token)) return 'syntax-number';
+    if (codeTypes.has(token.toLowerCase())) return 'syntax-type';
+    return 'syntax-keyword';
+}
+
+function HighlightedCode({ code, className = '' }) {
+    const parts = [];
+    let cursor = 0;
+    for (const match of code.matchAll(codeTokenPattern)) {
+        const index = match.index ?? 0;
+        if (index > cursor) parts.push(code.slice(cursor, index));
+        parts.push(<span key={`${index}-${match[0]}`} className={codeTokenClass(match[0])}>{match[0]}</span>);
+        cursor = index + match[0].length;
+    }
+    if (cursor < code.length) parts.push(code.slice(cursor));
+    return <pre className={`code-surface ${className}`}><code>{parts.length ? parts : ' '}</code></pre>;
+}
+
+function CodeEditor({ initialValue = '' }) {
+    const [code, setCode] = useState(initialValue);
+    useEffect(() => setCode(initialValue), [initialValue]);
+    return <div className="code-editor mt-1.5">
+        <HighlightedCode code={code} className="code-editor-highlight" />
+        <textarea name="code" required spellCheck="false" value={code} onChange={event => setCode(event.target.value)} onScroll={event => { const layer = event.currentTarget.previousElementSibling; if (layer) layer.scrollTop = event.currentTarget.scrollTop; }} className="code-editor-input" placeholder="Paste code, CLI commands, or a short Markdown note..." />
+    </div>;
+}
+
+function CardActions({ onEdit, onDelete }) {
+    const [open, setOpen] = useState(false);
+    return <div className="absolute right-2 top-2 z-20">
+        <button type="button" aria-label="Card actions" aria-expanded={open} onClick={() => setOpen(value => !value)} className="white-hover-button grid h-8 w-8 place-items-center rounded-lg border border-[#d5ddd5] bg-white text-lg font-bold shadow-sm">…</button>
+        {open && <div role="menu" className="absolute right-0 top-full mt-1 w-28 overflow-hidden rounded-lg border border-[#d5ddd5] bg-white p-1 shadow-lg">
+            <button type="button" role="menuitem" onClick={() => { setOpen(false); onEdit(); }} className="card-menu-item w-full rounded-md px-3 py-2 text-left text-xs font-semibold">Edit</button>
+            <button type="button" role="menuitem" onClick={() => { setOpen(false); onDelete(); }} className="card-menu-item w-full rounded-md px-3 py-2 text-left text-xs font-semibold">Delete</button>
+        </div>}
+    </div>;
+}
+
+function SnippetForm({ modal, data, setData, setModal, setPage, setActiveStack }) {
+    const editing = modal.type === 'edit-snippet';
+    const snippet = editing ? modal.snippet : null;
+    return <form className="panel fade-in max-h-[90vh] w-full max-w-xl overflow-y-auto p-5 md:p-6" onSubmit={async event => {
+        event.preventDefault();
+        const form = new FormData(event.currentTarget);
+        let image = snippet?.image ?? '';
+        try { if (form.get('image')?.size) image = await readImageFile(form.get('image')); }
+        catch (error) { alert(error.message); return; }
+        const savedSnippet = {
+            ...(snippet ?? {}),
+            id: snippet?.id ?? `s-${Date.now()}`,
+            title: form.get('title'),
+            description: form.get('description'),
+            code: form.get('code'),
+            image,
+            stacks: form.getAll('stacks'),
+            createdAt: snippet?.createdAt ?? new Date().toISOString().slice(0, 10),
+        };
+        setData(value => ({ ...value, snippets: editing ? value.snippets.map(item => item.id === savedSnippet.id ? savedSnippet : item) : [savedSnippet, ...value.snippets] }));
+        setModal(null);
+        if (!editing) { setPage('stacks'); setActiveStack(null); }
+    }}>
+        <div className="flex items-start justify-between"><div><div className="eyebrow">PERSONAL REFERENCE LIBRARY</div><h2 className="mt-1 font-display text-xl font-semibold">{editing ? 'Edit snippet card' : 'New snippet card'}</h2></div><button type="button" onClick={() => setModal(null)} className="text-xl">×</button></div>
+        <label className="mt-5 block text-[11px] font-semibold">Title<input name="title" required maxLength="100" defaultValue={snippet?.title ?? ''} className="input-dark mt-1.5 w-full rounded-lg px-3 py-2.5 text-xs" placeholder="e.g. Handle a missing record"/></label>
+        <label className="mt-4 block text-[11px] font-semibold">Description<textarea name="description" required maxLength="300" defaultValue={snippet?.description ?? ''} className="input-dark mt-1.5 min-h-16 w-full rounded-lg px-3 py-2.5 text-xs" placeholder="When is this useful?"/></label>
+        <label className="mt-4 block text-[11px] font-semibold">Code or notes<CodeEditor initialValue={snippet?.code ?? ''}/></label>
+        <label className="mt-4 block text-[11px] font-semibold">Screenshot or image <span>(optional, max 600 KB)</span><input name="image" type="file" accept="image/*" className="mt-2 block w-full text-[10px] file:mr-3 file:rounded-lg file:border-0 file:bg-[#e7f3cd] file:px-3 file:py-2 file:text-[10px]"/></label>
+        <div className="mt-4 text-[11px] font-semibold">Tag to stacks <span>(choose one or more)</span></div>
+        <div className="mt-2 flex flex-wrap gap-2">{data.stacks.map(stack => <label key={stack.id} className="flex cursor-pointer items-center gap-2 rounded-lg border border-[#d5ddd5] px-2.5 py-2 text-[10px]"><input type="checkbox" name="stacks" value={stack.id} defaultChecked={snippet?.stacks.includes(stack.id) ?? false} className="accent-[#a8d443]"/>{stack.name}</label>)}</div>
+        <div className="mt-6 flex justify-end gap-2"><button type="button" onClick={() => setModal(null)} className="ghost-button rounded-lg px-4 py-2 text-xs">Cancel</button><button className="lime-button rounded-lg px-4 py-2 text-xs font-semibold">{editing ? 'Save changes' : 'Save snippet'}</button></div>
+    </form>;
+}
+
+function StackForm({ modal, setData, setModal, categories }) {
+    const editing = modal.type === 'edit-stack';
+    const stackToEdit = editing ? modal.stack : null;
+    return <form className="panel fade-in w-full max-w-md p-6" onSubmit={async event => {
+        event.preventDefault();
+        const form = new FormData(event.currentTarget);
+        let image = stackToEdit?.image ?? '';
+        try { if (form.get('image')?.size) image = await readImageFile(form.get('image')); }
+        catch (error) { alert(error.message); return; }
+        const stack = {
+            ...(stackToEdit ?? {}),
+            id: stackToEdit?.id ?? `stack-${Date.now()}`,
+            name: form.get('name'),
+            category: form.get('category'),
+            icon: form.get('icon') || '◈',
+            image,
+            color: stackToEdit?.color ?? '#c6f36b',
+            entries: stackToEdit?.entries ?? 0,
+        };
+        setData(value => ({ ...value, stacks: editing ? value.stacks.map(item => item.id === stack.id ? stack : item) : [...value.stacks, stack] }));
+        setModal(null);
+    }}>
+        <div className="flex items-start justify-between"><div><div className="eyebrow">TECH STACK</div><h2 className="mt-1 font-display text-xl font-semibold">{editing ? 'Edit stack' : 'Add a stack'}</h2></div><button type="button" onClick={() => setModal(null)} className="text-xl">×</button></div>
+        <label className="mt-5 block text-[11px] font-semibold">Stack name<input name="name" required maxLength="48" defaultValue={stackToEdit?.name ?? ''} className="input-dark mt-1.5 w-full rounded-lg px-3 py-2.5 text-xs" placeholder="e.g. TypeScript"/></label>
+        <label className="mt-4 block text-[11px] font-semibold">Category<select name="category" defaultValue={stackToEdit?.category ?? categories[0]} className="input-dark mt-1.5 w-full rounded-lg px-3 py-2.5 text-xs">{categories.map(category => <option key={category}>{category}</option>)}</select></label>
+        <label className="mt-4 block text-[11px] font-semibold">Short icon / mark<input name="icon" maxLength="3" defaultValue={stackToEdit?.icon ?? ''} className="input-dark mt-1.5 w-full rounded-lg px-3 py-2.5 text-xs" placeholder="TS"/></label>
+        <label className="mt-4 block text-[11px] font-semibold">Icon image <span>(optional, max 600 KB)</span><input name="image" type="file" accept="image/*" className="mt-2 block w-full text-[10px] file:mr-3 file:rounded-lg file:border-0 file:bg-[#e7f3cd] file:px-3 file:py-2 file:text-[10px]"/></label>
+        <div className="mt-6 flex justify-end gap-2"><button type="button" onClick={() => setModal(null)} className="ghost-button rounded-lg px-4 py-2 text-xs">Cancel</button><button className="lime-button rounded-lg px-4 py-2 text-xs font-semibold">{editing ? 'Save changes' : 'Add stack'}</button></div>
+    </form>;
+}
+
+function CategoryManager({ categories, onAdd, onDelete, onClose }) {
+    const [name, setName] = useState('');
+    function submit(event) {
+        event.preventDefault();
+        const category = name.trim();
+        if (!category) return;
+        if (categories.some(item => item.toLowerCase() === category.toLowerCase())) {
+            alert('That category already exists.');
+            return;
+        }
+        onAdd(category);
+        setName('');
+    }
+    return <section className="panel fade-in w-full max-w-md p-6">
+        <div className="flex items-start justify-between"><div><div className="eyebrow">STACK ORGANIZATION</div><h2 className="mt-1 font-display text-xl font-semibold">Manage categories</h2></div><button onClick={onClose} className="text-xl">×</button></div>
+        <form onSubmit={submit} className="mt-5 flex gap-2"><input value={name} onChange={event => setName(event.target.value)} required maxLength="32" className="input-dark min-w-0 flex-1 rounded-lg px-3 py-2.5 text-xs" placeholder="New category name"/><button className="lime-button rounded-lg px-4 py-2 text-xs font-semibold">Add</button></form>
+        <div className="mt-5 space-y-2">{categories.map(category => <div key={category} className="flex items-center justify-between rounded-lg border border-[#d5ddd5] px-3 py-2.5"><span className="text-sm font-semibold">{category}</span><button type="button" disabled={categories.length <= 1} onClick={() => onDelete(category)} className="rounded-md px-2.5 py-1.5 text-xs font-semibold text-red-700 hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-40">Delete</button></div>)}</div>
+        <p className="mt-4 text-[11px] leading-5 text-[#667166]">If a category has stacks, deleting it moves those stacks to another available category.</p>
+    </section>;
+}
+
 function App() {
     const [data, setData] = useState(defaultState);
     const [databaseReady, setDatabaseReady] = useState(false);
@@ -184,7 +324,7 @@ function App() {
             })
             .then(payload => {
                 if (!active) return;
-                setData(payload.data ?? readSavedState());
+                setData(normalizeWorkspace(payload.data ?? readSavedState()));
                 setDatabaseStatus('connected');
             })
             .catch(() => {
@@ -231,6 +371,41 @@ function App() {
         setPage(nextPage);
         setActiveStack(null);
         setSearch('');
+    }
+
+    function deleteSnippet(snippet) {
+        if (!window.confirm(`Delete “${snippet.title}”?`)) return;
+        setData(value => ({ ...value, snippets: value.snippets.filter(item => item.id !== snippet.id) }));
+    }
+
+    function deleteStack(stack) {
+        if (!window.confirm(`Delete “${stack.name}” and remove it from tagged snippets?`)) return;
+        setData(value => ({
+            ...value,
+            stacks: value.stacks.filter(item => item.id !== stack.id),
+            snippets: value.snippets.map(item => ({ ...item, stacks: item.stacks.filter(id => id !== stack.id) })),
+        }));
+        if (activeStack?.id === stack.id) {
+            setActiveStack(null);
+            setPage('stacks');
+        }
+    }
+
+    function addCategory(name) {
+        setData(value => ({ ...value, categories: [...value.categories, name] }));
+    }
+
+    function deleteCategory(name) {
+        if (data.categories.length <= 1) return;
+        if (!window.confirm(`Delete the “${name}” category? Stacks in it will be moved to another category.`)) return;
+        const remaining = data.categories.filter(item => item !== name);
+        const replacement = remaining[0];
+        setData(value => ({
+            ...value,
+            categories: remaining,
+            stacks: value.stacks.map(stack => stack.category === name ? { ...stack, category: replacement } : stack),
+        }));
+        if (category === name) setCategory('All');
     }
 
     function exportBackup() {
@@ -282,32 +457,33 @@ function App() {
                             <div className="mt-3 border-t border-[#e5eae5] pt-3">
                                 <button onClick={() => setModal({ type: 'snippet' })} className="simple-action"><span>＋</span>New Snippet Card</button>
                                 <button onClick={() => setModal({ type: 'stack' })} className="simple-action"><span>▦</span>Add Stack</button>
+                                <button onClick={() => setModal({ type: 'category-manager' })} className="simple-action"><span>☷</span>Manage Categories</button>
                                 <button onClick={() => navigate('progress')} className="simple-action"><span>▥</span>View Progress</button>
                             </div>
                         </section>
                         <section className="min-w-0">
                             <div className="flex flex-wrap items-center justify-between gap-3">
                                 <div><h2 className="font-display text-base font-semibold text-[#26352b]">Tech Stack Explorer</h2><p className="mt-1 text-[11px] text-[#778279]">Choose a stack to open its saved notes.</p></div>
-                                <span className="rounded-full bg-[#e8f3e7] px-2.5 py-1 text-[10px] text-[#547154]">{data.stacks.length} stacks</span>
                             </div>
-                            <div className="mt-3 flex gap-1 overflow-x-auto border-b border-[#e2e8e2] pb-2">{['All', 'Frontend', 'Backend', 'Database', 'Workflow', 'Engineering'].map(item => <button key={item} onClick={() => setCategory(item)} className={`shrink-0 rounded-md px-2.5 py-1.5 text-[10px] ${category === item ? 'bg-[#eaf4e8] font-semibold text-[#345338]' : 'text-[#778078] hover:bg-[#f2f5f1]'}`}>{item}</button>)}</div>
-                            <div className="mt-3 grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">{data.stacks.filter(stack => category === 'All' || stack.category === category).map(stack => <button key={stack.id} onClick={() => { setActiveStack(stack); setPage('stacks'); setSearch(''); }} className="simple-stack-card overflow-hidden rounded-xl border border-[#e4e9e4] bg-white text-left shadow-sm transition hover:-translate-y-0.5 hover:border-[#b8cbb6] hover:shadow-md"><div className="flex h-[96px] items-center justify-center bg-[#f7f9f7] p-4">{stack.image ? <img src={stack.image} alt="" className="h-full max-w-full object-contain"/> : <span className="font-display text-4xl font-bold" style={{ color: stack.color }}>{stack.icon}</span>}</div><div className="border-t border-[#edf0ed] px-3 py-2.5"><div className="truncate text-xs font-medium text-[#344138]">{stack.name}</div><div className="mt-1 text-[9px] text-[#879088]">{stack.category}</div></div></button>)}</div>
+                            <div className="mt-3 flex gap-1 overflow-x-auto border-b border-[#e2e8e2] pb-2">{['All', ...data.categories].map(item => <button key={item} onClick={() => setCategory(item)} className={`shrink-0 rounded-md px-2.5 py-1.5 text-[10px] ${category === item ? 'bg-[#eaf4e8] font-semibold text-[#345338]' : 'text-[#778078] hover:bg-[#f2f5f1]'}`}>{item}</button>)}</div>
+                            <div className="mt-3 grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">{data.stacks.filter(stack => category === 'All' || stack.category === category).map(stack => <div key={stack.id} className="relative"><button onClick={() => { setActiveStack(stack); setPage('stacks'); setSearch(''); }} className="simple-stack-card block w-full overflow-hidden rounded-xl border border-[#e4e9e4] bg-white text-left shadow-sm transition hover:-translate-y-0.5 hover:border-[#b8cbb6] hover:shadow-md"><div className="flex h-[96px] items-center justify-center bg-[#f7f9f7] p-4">{stack.image ? <img src={stack.image} alt="" className="h-full max-w-full object-contain"/> : <span className="font-display text-4xl font-bold" style={{ color: stack.color }}>{stack.icon}</span>}</div><div className="border-t border-[#edf0ed] px-3 py-2.5"><div className="truncate text-xs font-medium text-[#344138]">{stack.name}</div><div className="mt-1 text-[9px] text-[#879088]">{stack.category}</div></div></button><CardActions onEdit={() => setModal({ type: 'edit-stack', stack })} onDelete={() => deleteStack(stack)}/></div>)}</div>
                             {!data.stacks.filter(stack => category === 'All' || stack.category === category).length && <div className="rounded-lg border border-dashed border-[#d7dfd7] p-8 text-center text-xs text-[#778279]">No stacks in this category yet.</div>}
                         </section>
                     </div>
                 </section>}
                 
 
-                {page === 'stacks' && <section className="fade-in space-y-6"><div className="flex flex-wrap items-center justify-between gap-4"><h1 className="font-display text-3xl font-bold">{activeStack ? activeStack.name : 'Stack library'}</h1>{activeStack && <button onClick={() => setModal({ type: 'snippet' })} className="lime-button rounded-lg px-3 py-2.5 text-xs font-semibold">+ New snippet</button>}</div>{!activeStack && <div className="flex flex-wrap gap-2">{['All', 'Frontend', 'Backend', 'Database', 'Workflow', 'Engineering'].map(item => <button key={item} onClick={() => setCategory(item)} className={`rounded-lg px-3 py-2 text-[11px] ${category === item ? 'bg-[#c6f36b] font-semibold text-[#141710]' : 'ghost-button'}`}>{item}</button>)}</div>}{!activeStack && <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">{data.stacks.filter(item => category === 'All' || item.category === category).map(stack => <button key={stack.id} onClick={() => setActiveStack(stack)} className="panel stack-card flex items-center gap-4 p-4 text-left"><StackMark stack={stack} className="h-12 w-12"/><span className="min-w-0 flex-1"><span className="block text-sm font-semibold">{stack.name}</span><span className="mt-1 block text-[10px] text-[#858e87]">{stack.category}</span></span><span className="text-xs text-[#8c958c]">{stack.entries + data.snippets.filter(note => note.stacks.includes(stack.id) && !starterSnippets.some(seed => seed.id === note.id)).length} →</span></button>)}</div>}{activeStack && <div className="space-y-4"><label className="relative block max-w-xl"><span className="absolute left-3 top-1/2 -translate-y-1/2 text-[#111111]">⌕</span><input value={search} onChange={event => setSearch(event.target.value)} placeholder={`Search ${activeStack.name}...`} className="input-dark w-full rounded-xl py-3 pl-10 pr-4 text-xs" /></label><div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">{filteredSnippets.map(note => <article key={note.id} className="panel flex min-h-[230px] flex-col overflow-hidden"><div className="flex h-24 items-center justify-center border-b border-[#2b302c] bg-[#1c211d]">{note.image ? <img src={note.image} alt="Snippet preview" className="h-full w-full object-cover"/> : <span className="font-mono text-xs text-[#768077]">{note.code.split('\n').slice(0, 2).join(' ').slice(0, 55)}...</span>}</div><div className="flex flex-1 flex-col p-4"><div className="font-display text-sm font-semibold">{note.title}</div><p className="mt-1 line-clamp-2 text-[10px] leading-5 text-[#8f9890]">{note.description}</p><div className="mt-auto flex items-center justify-between gap-2 pt-4"> <div className="flex gap-1">{note.stacks.map(stackId => { const stack = data.stacks.find(item => item.id === stackId); return stack && <span key={stackId} className="rounded-md px-2 py-1 text-[9px]" style={{ color: stack.color, background: `${stack.color}18` }}>{stack.name}</span>; })}</div><button onClick={() => setModal({ type: 'snippet-view', snippet: note })} className="text-[10px] text-[#c6f36b]">Open →</button></div></div></article>)}</div>{!filteredSnippets.length && <div className="panel p-10 text-center text-sm text-[#8f9890]">No notes match that search yet. Add your first snippet to this stack.</div>}</div>}</section>}
-                {page === 'progress' && <section className="fade-in space-y-6"><div><div className="eyebrow mb-2">YOUR LIBRARY</div><h1 className="font-display text-3xl font-semibold">Progress</h1><p className="mt-2 text-sm">A quick view of your saved snippets and tech stacks.</p></div><div className="grid gap-3 sm:grid-cols-3"><div className="panel p-5"><div className="eyebrow">SNIPPETS SAVED</div><div className="mt-3 font-display text-4xl font-semibold">{data.snippets.length}</div></div><div className="panel p-5"><div className="eyebrow">TECH STACKS</div><div className="mt-3 font-display text-4xl font-semibold">{data.stacks.length}</div></div><div className="panel p-5"><div className="eyebrow">YOUR NOTES</div><div className="mt-3 font-display text-4xl font-semibold">{data.snippets.filter(note => !starterSnippets.some(seed => seed.id === note.id)).length}</div><div className="mt-1 text-[10px]">Snippets you added</div></div></div><div className="panel p-5 md:p-6"><div className="flex flex-wrap items-end justify-between gap-3"><div><div className="eyebrow">NOTES BY STACK</div><h2 className="mt-1 font-display text-lg font-semibold">Your reference library</h2></div><button onClick={exportBackup} className="ghost-button rounded-lg px-3 py-2 text-[10px]">Export my data</button></div><div className="mt-6 space-y-4">{data.stacks.map(stack => { const count = data.snippets.filter(note => note.stacks.includes(stack.id)).length; const max = Math.max(...data.stacks.map(item => data.snippets.filter(note => note.stacks.includes(item.id)).length), 1); return <div key={stack.id} className="grid grid-cols-[100px_1fr_35px] items-center gap-3"><div className="truncate text-[11px] font-semibold">{stack.name}</div><div className="progress-track h-2 overflow-hidden rounded-full"><div className="h-full rounded-full transition-all" style={{ width: (count / max * 100) + '%', background: '#a8d443' }}></div></div><div className="text-right font-mono text-[10px]">{count}</div></div>; })}</div></div><ContributionCalendar snippets={data.snippets}/></section>}
+                {page === 'stacks' && <section className="fade-in space-y-6"><div className="flex flex-wrap items-center justify-between gap-4"><h1 className="font-display text-3xl font-bold">{activeStack ? activeStack.name : 'Stack library'}</h1>{activeStack && <button onClick={() => setModal({ type: 'snippet' })} className="lime-button rounded-lg px-3 py-2.5 text-xs font-semibold">+ New snippet</button>}</div>{!activeStack && <div className="flex flex-wrap gap-2">{['All', ...data.categories].map(item => <button key={item} onClick={() => setCategory(item)} className={`rounded-lg px-3 py-2 text-[11px] ${category === item ? 'bg-[#c6f36b] font-semibold text-[#141710]' : 'ghost-button'}`}>{item}</button>)}</div>}{!activeStack && <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">{data.stacks.filter(item => category === 'All' || item.category === category).map(stack => <div key={stack.id} className="panel stack-card relative flex items-center gap-4 p-4 pr-14 text-left"><button onClick={() => setActiveStack(stack)} className="flex min-w-0 flex-1 items-center gap-4 text-left"><StackMark stack={stack} className="h-12 w-12"/><span className="min-w-0 flex-1"><span className="block text-sm font-semibold">{stack.name}</span><span className="mt-1 block text-[10px] text-[#858e87]">{stack.category}</span></span><span className="text-xs text-[#8c958c]">{stack.entries + data.snippets.filter(note => note.stacks.includes(stack.id) && !starterSnippets.some(seed => seed.id === note.id)).length} →</span></button><CardActions onEdit={() => setModal({ type: 'edit-stack', stack })} onDelete={() => deleteStack(stack)}/></div>)}</div>}{activeStack && <div className="space-y-4"><label className="relative block max-w-xl"><span className="absolute left-3 top-1/2 -translate-y-1/2 text-[#111111]">⌕</span><input value={search} onChange={event => setSearch(event.target.value)} placeholder={`Search ${activeStack.name}...`} className="input-dark w-full rounded-xl py-3 pl-10 pr-4 text-xs" /></label><div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">{filteredSnippets.map(note => <article key={note.id} className="panel relative flex min-h-[230px] flex-col"><CardActions onEdit={() => setModal({ type: 'edit-snippet', snippet: note })} onDelete={() => deleteSnippet(note)}/><div className="flex h-24 items-center justify-center border-b border-[#2b302c] bg-[#1c211d]">{note.image ? <img src={note.image} alt="Snippet preview" className="h-full w-full rounded-t-xl object-cover"/> : <HighlightedCode code={note.code.split('\n').slice(0, 2).join('\n').slice(0, 80)} className="snippet-code-preview"/>}</div><div className="flex flex-1 flex-col p-4"><div className="font-display text-sm font-semibold">{note.title}</div><p className="mt-1 line-clamp-2 text-[10px] leading-5 text-[#8f9890]">{note.description}</p><div className="mt-auto flex justify-end pt-4"><button onClick={() => setModal({ type: 'snippet-view', snippet: note })} className="text-[10px] text-[#c6f36b]">Open →</button></div></div></article>)}</div>{!filteredSnippets.length && <div className="panel p-10 text-center text-sm text-[#8f9890]">No notes match that search yet. Add your first snippet to this stack.</div>}</div>}</section>}
+                {page === 'progress' && <section className="fade-in space-y-6"><div><div className="eyebrow mb-2">YOUR LIBRARY</div><h1 className="font-display text-3xl font-semibold">Progress</h1><p className="mt-2 text-sm">A quick view of your saved snippets and tech stacks.</p></div><div className="panel p-5 md:p-6"><div className="flex flex-wrap items-end justify-between gap-3"><div><div className="eyebrow">NOTES BY STACK</div><h2 className="mt-1 font-display text-lg font-semibold">Your reference library</h2></div><button onClick={exportBackup} className="ghost-button rounded-lg px-3 py-2 text-[10px]">Export my data</button></div><div className="mt-6 space-y-4">{data.stacks.map(stack => { const count = data.snippets.filter(note => note.stacks.includes(stack.id)).length; const max = Math.max(...data.stacks.map(item => data.snippets.filter(note => note.stacks.includes(item.id)).length), 1); return <div key={stack.id} className="grid grid-cols-[100px_1fr_35px] items-center gap-3"><div className="truncate text-[11px] font-semibold">{stack.name}</div><div className="progress-track h-2 overflow-hidden rounded-full"><div className="h-full rounded-full transition-all" style={{ width: (count / max * 100) + '%', background: '#a8d443' }}></div></div><div className="text-right font-mono text-[10px]">{count}</div></div>; })}</div></div><ContributionCalendar snippets={data.snippets}/></section>}
             </main>
             <footer className="flex flex-wrap items-center justify-between gap-2 border-t border-[#272b28] px-5 py-4 text-[10px] text-[#626a63] md:px-8"><span>DEV BRAIN STUDIO <span className="mx-1.5">·</span> BUILT FOR YOUR NEXT STEP</span><span>Local-first developer workspace</span></footer>
         </div>
 
         {modal && <div className="modal-backdrop fixed inset-0 z-50 flex items-center justify-center p-4" onMouseDown={event => { if (event.target === event.currentTarget) setModal(null); }}>
-            {modal.type === 'snippet' && <form className="panel fade-in max-h-[90vh] w-full max-w-xl overflow-y-auto p-5 md:p-6" onSubmit={async event => { event.preventDefault(); const form = new FormData(event.currentTarget); let image = ''; try { if (form.get('image')?.size) image = await readImageFile(form.get('image')); } catch (error) { alert(error.message); return; } const snippet = { id: `s-${Date.now()}`, title: form.get('title'), description: form.get('description'), code: form.get('code'), image, stacks: form.getAll('stacks'), createdAt: new Date().toISOString().slice(0, 10) }; setData(value => ({ ...value, snippets: [snippet, ...value.snippets] })); setModal(null); setPage('stacks'); setActiveStack(null); }}><div className="flex items-start justify-between"><div><div className="eyebrow">PERSONAL REFERENCE LIBRARY</div><h2 className="mt-1 font-display text-xl font-semibold">New snippet card</h2></div><button type="button" onClick={() => setModal(null)} className="text-xl text-[#8f9790]">×</button></div><label className="mt-5 block text-[11px] text-[#b7beb7]">Title<input name="title" required maxLength="100" className="input-dark mt-1.5 w-full rounded-lg px-3 py-2.5 text-xs" placeholder="e.g. Handle a missing record"/></label><label className="mt-4 block text-[11px] text-[#b7beb7]">Description<textarea name="description" required maxLength="300" className="input-dark mt-1.5 min-h-16 w-full rounded-lg px-3 py-2.5 text-xs" placeholder="When is this useful?"/></label><label className="mt-4 block text-[11px] text-[#b7beb7]">Code or notes<textarea name="code" required className="code-surface mt-1.5 min-h-32 w-full rounded-lg p-3 text-xs leading-5 text-[#d2ddd0]" placeholder="Paste code, CLI commands, or a short Markdown note..."/></label><label className="mt-4 block text-[11px] text-[#b7beb7]">Screenshot or image <span className="text-[#727b73]">(optional, max 600 KB)</span><input name="image" type="file" accept="image/*" className="mt-2 block w-full text-[10px] text-[#9ca59d] file:mr-3 file:rounded-lg file:border-0 file:bg-[#293127] file:px-3 file:py-2 file:text-[10px] file:text-[#d4e7c3]"/></label><div className="mt-4 text-[11px] text-[#b7beb7]">Tag to stacks <span className="ml-1 text-[#707970]">(choose one or more)</span></div><div className="mt-2 flex flex-wrap gap-2">{data.stacks.map(stack => <label key={stack.id} className="flex cursor-pointer items-center gap-2 rounded-lg border border-[#343a35] px-2.5 py-2 text-[10px]"><input type="checkbox" name="stacks" value={stack.id} className="accent-[#c6f36b]"/>{stack.name}</label>)}</div><div className="mt-6 flex justify-end gap-2"><button type="button" onClick={() => setModal(null)} className="ghost-button rounded-lg px-4 py-2 text-xs">Cancel</button><button className="lime-button rounded-lg px-4 py-2 text-xs font-semibold">Save snippet</button></div></form>}
-            {modal.type === 'stack' && <form className="panel fade-in w-full max-w-md p-6" onSubmit={async event => { event.preventDefault(); const form = new FormData(event.currentTarget); let image = ''; try { if (form.get('image')?.size) image = await readImageFile(form.get('image')); } catch (error) { alert(error.message); return; } const stack = { id: `stack-${Date.now()}`, name: form.get('name'), category: form.get('category'), icon: form.get('icon') || '◈', image, color: '#c6f36b', entries: 0 }; setData(value => ({ ...value, stacks: [...value.stacks, stack] })); setModal(null); }}><div className="flex items-start justify-between"><div><div className="eyebrow">GROW YOUR LIBRARY</div><h2 className="mt-1 font-display text-xl font-semibold">Add a stack</h2></div><button type="button" onClick={() => setModal(null)} className="text-xl text-[#8f9790]">×</button></div><label className="mt-5 block text-[11px] text-[#b7beb7]">Stack name<input name="name" required maxLength="48" className="input-dark mt-1.5 w-full rounded-lg px-3 py-2.5 text-xs" placeholder="e.g. TypeScript"/></label><label className="mt-4 block text-[11px] text-[#b7beb7]">Category<select name="category" className="input-dark mt-1.5 w-full rounded-lg px-3 py-2.5 text-xs"><option>Frontend</option><option>Backend</option><option>Database</option><option>Workflow</option><option>Engineering</option></select></label><label className="mt-4 block text-[11px] text-[#b7beb7]">Short icon / mark<input name="icon" maxLength="3" className="input-dark mt-1.5 w-full rounded-lg px-3 py-2.5 text-xs" placeholder="TS"/></label><label className="mt-4 block text-[11px] text-[#b7beb7]">Icon image <span className="text-[#727b73]">(optional, max 600 KB)</span><input name="image" type="file" accept="image/*" className="mt-2 block w-full text-[10px] text-[#9ca59d] file:mr-3 file:rounded-lg file:border-0 file:bg-[#293127] file:px-3 file:py-2 file:text-[10px] file:text-[#d4e7c3]"/></label><div className="mt-6 flex justify-end gap-2"><button type="button" onClick={() => setModal(null)} className="ghost-button rounded-lg px-4 py-2 text-xs">Cancel</button><button className="lime-button rounded-lg px-4 py-2 text-xs font-semibold">Add stack</button></div></form>}
-            {modal.type === 'snippet-view' && <article className="panel fade-in w-full max-w-2xl p-6"><div className="flex items-start justify-between"><div><div className="eyebrow">SAVED SNIPPET</div><h2 className="mt-1 font-display text-xl font-semibold">{modal.snippet.title}</h2></div><button onClick={() => setModal(null)} className="text-xl text-[#8f9790]">×</button></div><p className="mt-2 text-xs text-[#9ba39c]">{modal.snippet.description}</p><pre className="code-surface scrollbar-thin mt-5 max-h-[45vh] overflow-auto rounded-xl p-4 text-xs leading-6 text-[#d2ddd0]">{modal.snippet.code}</pre><div className="mt-4 flex items-center justify-between"><div className="flex gap-1">{modal.snippet.stacks.map(id => { const stack = data.stacks.find(item => item.id === id); return stack && <span key={id} className="rounded-md px-2 py-1 text-[9px]" style={{ color: stack.color, background: `${stack.color}18` }}>{stack.name}</span>; })}</div><button onClick={() => { setData(value => ({ ...value, snippets: value.snippets.filter(item => item.id !== modal.snippet.id) })); setModal(null); }} className="text-[10px] text-[#ff9289]">Delete snippet</button></div></article>}
+            {['snippet', 'edit-snippet'].includes(modal.type) && <SnippetForm modal={modal} data={data} setData={setData} setModal={setModal} setPage={setPage} setActiveStack={setActiveStack}/>}
+            {['stack', 'edit-stack'].includes(modal.type) && <StackForm modal={modal} setData={setData} setModal={setModal} categories={data.categories}/>}
+            {modal.type === 'category-manager' && <CategoryManager categories={data.categories} onAdd={addCategory} onDelete={deleteCategory} onClose={() => setModal(null)}/>}
+            {modal.type === 'snippet-view' && <article className="panel fade-in w-full max-w-2xl p-6"><div className="flex items-start justify-between"><div><div className="eyebrow">SAVED SNIPPET</div><h2 className="mt-1 font-display text-xl font-semibold">{modal.snippet.title}</h2></div><button onClick={() => setModal(null)} className="text-xl text-[#8f9790]">×</button></div><p className="mt-2 text-xs text-[#9ba39c]">{modal.snippet.description}</p><HighlightedCode code={modal.snippet.code} className="scrollbar-thin mt-5 max-h-[45vh] overflow-auto rounded-xl p-4 text-xs leading-6"/><div className="mt-4 flex items-center justify-between"><div className="flex gap-1">{modal.snippet.stacks.map(id => { const stack = data.stacks.find(item => item.id === id); return stack && <span key={id} className="rounded-md px-2 py-1 text-[9px]" style={{ color: stack.color, background: `${stack.color}18` }}>{stack.name}</span>; })}</div><button onClick={() => { setData(value => ({ ...value, snippets: value.snippets.filter(item => item.id !== modal.snippet.id) })); setModal(null); }} className="text-[10px] text-[#ff9289]">Delete snippet</button></div></article>}
             {modal.type === 'import' && <div className="panel fade-in w-full max-w-md p-6"><div className="flex items-start justify-between"><div><div className="eyebrow">RESTORE YOUR LIBRARY</div><h2 className="mt-1 font-display text-xl font-semibold">Import a backup</h2></div><button onClick={() => setModal(null)} className="text-xl text-[#8f9790]">×</button></div><p className="mt-3 text-xs leading-5 text-[#9ba39c]">Choose a JSON backup previously exported from DevBrain Studio. This replaces the data currently saved in this browser.</p><label className="ghost-button mt-5 block cursor-pointer rounded-lg p-4 text-center text-xs">Choose backup file<input type="file" accept="application/json,.json" className="hidden" onChange={importBackup}/></label><button onClick={() => setModal(null)} className="mt-4 w-full text-xs text-[#9ba39c]">Cancel</button></div>}
         </div>}
     </div>;
