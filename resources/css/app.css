@@ -37,7 +37,6 @@ button { cursor:pointer; }
 .input-dark:focus { border-color:#91bd50; box-shadow:0 0 0 3px #c6f36b1f; }
 .stack-card { transition:transform .2s ease,border-color .2s ease; }
 .stack-card:hover { transform:translateY(-3px); border-color:#596550; }
-.lesson-row:hover { background:#202420; }
 .progress-track { background:#2a302b; }
 .progress-fill { background:#c6f36b; }
 .modal-backdrop { background:#060807c9; backdrop-filter:blur(8px); }

@@ -23,12 +23,18 @@ const defaultState = {
     snippets: starterSnippets,
 };
 
+function normalizeWorkspace(saved = {}) {
+    return {
+        stacks: Array.isArray(saved.stacks) ? saved.stacks : defaultState.stacks,
+        snippets: Array.isArray(saved.snippets) ? saved.snippets : defaultState.snippets,
+        ...(typeof saved.bannerImage === 'string' ? { bannerImage: saved.bannerImage } : {}),
+    };
+}
+
 function readSavedState() {
     try {
         const saved = JSON.parse(localStorage.getItem('devbrain-studio-v1'));
-        if (!saved) return defaultState;
-        const { completedLessons, evidence, projects, ...workspace } = saved;
-        return { ...defaultState, ...workspace };
+        return saved ? normalizeWorkspace(saved) : defaultState;
     } catch { return defaultState; }
 }
 
@@ -87,10 +93,6 @@ function App() {
     const [activeStack, setActiveStack] = useState(null);
     const [search, setSearch] = useState('');
     const [category, setCategory] = useState('All');
-    const [coachOpen, setCoachOpen] = useState(false);
-    const [coachQuery, setCoachQuery] = useState('');
-    const [coachMessages, setCoachMessages] = useState([]);
-    const [coachLoading, setCoachLoading] = useState(false);
 
     async function changeBanner(event) {
         const file = event.target.files?.[0];
@@ -164,41 +166,6 @@ function App() {
         setSearch('');
     }
 
-    async function submitCoach(event) {
-        event.preventDefault();
-        const question = coachQuery.trim();
-        if (!question || coachLoading) return;
-
-        setCoachQuery('');
-        setCoachMessages(current => [...current, { role: 'user', text: question }]);
-        setCoachLoading(true);
-
-        try {
-            const response = await fetch('/api/assistant/search', {
-                method: 'POST',
-                headers: { Accept: 'application/json', 'Content-Type': 'application/json' },
-                body: JSON.stringify({ message: question }),
-            });
-            if (!response.ok) throw new Error('The assistant could not search your workspace.');
-            const result = await response.json();
-            setCoachMessages(current => [...current, { role: 'assistant', text: result.answer, matches: result.matches ?? [], aiPowered: result.aiPowered }]);
-        } catch {
-            setCoachMessages(current => [...current, { role: 'assistant', text: 'I could not reach the local search service. Check that Laravel is running and your MySQL workspace is connected.', matches: [], aiPowered: false }]);
-        } finally {
-            setCoachLoading(false);
-        }
-    }
-
-    function openAssistantSnippet(id) {
-        const snippet = data.snippets.find(item => item.id === id);
-        if (!snippet) return;
-        const stack = data.stacks.find(item => snippet.stacks.includes(item.id));
-        setPage('stacks');
-        setActiveStack(stack ?? null);
-        setModal({ type: 'snippet-view', snippet });
-        setCoachOpen(false);
-    }
-
     function exportBackup() {
         const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
         const url = URL.createObjectURL(blob);
@@ -217,8 +184,7 @@ function App() {
             try {
                 const parsed = JSON.parse(String(reader.result));
                 if (!Array.isArray(parsed.stacks) || !Array.isArray(parsed.snippets)) throw new Error('Invalid backup');
-                const { completedLessons, evidence, projects, ...workspace } = parsed;
-                setData({ ...defaultState, ...workspace });
+                setData(normalizeWorkspace(parsed));
                 setModal(null);
             } catch { alert('That file is not a valid DevBrain Studio backup.'); }
         };
@@ -236,7 +202,7 @@ function App() {
         <div className="main-area ml-0 flex min-h-screen flex-1 flex-col sm:ml-[76px] lg:ml-[248px]">
             <header className="sticky top-0 z-10 flex h-[68px] items-center justify-between border-b border-[#272b28] bg-[#101211]/90 px-5 backdrop-blur-xl md:px-8">
                 <div className="flex items-center gap-2 text-xs text-[#858d86]"><span>DevBrain Studio</span><span className="text-[#555c56]">/</span><span className="text-[#e8ece7]">{activeStack?.name ?? (({ stacks: 'Stack library', progress: 'Progress' }[page]))}</span></div>
-                <div className="flex items-center gap-2"><span title={databaseStatus === 'connected' ? 'Workspace saved in MySQL' : databaseStatus === 'saving' ? 'Saving workspace to MySQL' : databaseStatus === 'connecting' ? 'Connecting to MySQL' : 'MySQL unavailable; using this browser’s local backup'} className={`hidden items-center gap-1.5 rounded-lg border px-2.5 py-2 text-[9px] sm:flex ${databaseStatus === 'connected' ? 'border-[#34412e] bg-[#1c2419] text-[#c6f36b]' : databaseStatus === 'saving' || databaseStatus === 'connecting' ? 'border-[#393e37] bg-[#20231f] text-[#c0c5bd]' : 'border-[#533b33] bg-[#271e1a] text-[#f3b58e]'}`}><span className="h-1.5 w-1.5 rounded-full bg-current"></span>{databaseStatus === 'connected' ? 'MYSQL SAVED' : databaseStatus === 'saving' ? 'SAVING' : databaseStatus === 'connecting' ? 'CONNECTING' : 'LOCAL BACKUP'}</span><button onClick={() => setCoachOpen(true)} className="ghost-button hidden items-center gap-2 rounded-lg px-3 py-2 text-xs sm:flex"><span className="text-[#c6f36b]">✳</span> Ask coach</button><button onClick={() => setModal({ type: 'snippet' })} className="lime-button flex items-center gap-2 rounded-lg px-3 py-2 text-xs font-semibold"><span className="text-base leading-none">+</span><span className="hidden sm:inline">New snippet</span></button></div>
+                <div className="flex items-center gap-2"><span title={databaseStatus === 'connected' ? 'Workspace saved in MySQL' : databaseStatus === 'saving' ? 'Saving workspace to MySQL' : databaseStatus === 'connecting' ? 'Connecting to MySQL' : 'MySQL unavailable; using this browser’s local backup'} className={`hidden items-center gap-1.5 rounded-lg border px-2.5 py-2 text-[9px] sm:flex ${databaseStatus === 'connected' ? 'border-[#34412e] bg-[#1c2419] text-[#c6f36b]' : databaseStatus === 'saving' || databaseStatus === 'connecting' ? 'border-[#393e37] bg-[#20231f] text-[#c0c5bd]' : 'border-[#533b33] bg-[#271e1a] text-[#f3b58e]'}`}><span className="h-1.5 w-1.5 rounded-full bg-current"></span>{databaseStatus === 'connected' ? 'MYSQL SAVED' : databaseStatus === 'saving' ? 'SAVING' : databaseStatus === 'connecting' ? 'CONNECTING' : 'LOCAL BACKUP'}</span><button onClick={() => setModal({ type: 'snippet' })} className="lime-button flex items-center gap-2 rounded-lg px-3 py-2 text-xs font-semibold"><span className="text-base leading-none">+</span><span className="hidden sm:inline">New snippet</span></button></div>
             </header>
 
             <main className="mx-auto w-full max-w-[1440px] flex-1 px-5 py-7 md:px-8 md:py-9">
@@ -270,9 +236,6 @@ function App() {
             </main>
             <footer className="flex flex-wrap items-center justify-between gap-2 border-t border-[#272b28] px-5 py-4 text-[10px] text-[#626a63] md:px-8"><span>DEV BRAIN STUDIO <span className="mx-1.5">·</span> BUILT FOR YOUR NEXT STEP</span><span>Local-first developer workspace</span></footer>
         </div>
-
-        {coachOpen && <div className="fixed inset-0 z-40 flex justify-end bg-black/45" onMouseDown={event => { if (event.target === event.currentTarget) setCoachOpen(false); }}><aside className="fade-in flex h-full w-full max-w-[420px] flex-col border-l border-[#333a33] bg-[#151816] shadow-2xl"><div className="flex items-center justify-between border-b border-[#2c322d] px-5 py-4"><div className="flex items-center gap-3"><span className="flex h-9 w-9 items-center justify-center rounded-xl bg-[#c6f36b] text-[#151913]">✳</span><div><div className="text-sm font-semibold">Floating deep search</div><div className="mt-1 text-[10px] text-[#858e87]">Your MySQL notes <span className="mx-1">·</span> Gemini is optional</div></div></div><button onClick={() => setCoachOpen(false)} className="text-xl text-[#929a93]">×</button></div><div className="scrollbar-thin flex-1 space-y-4 overflow-y-auto p-5">{coachMessages.length === 0 && <div className="rounded-xl border border-[#343b34] bg-[#1d221e] p-4"><div className="text-xs font-semibold text-[#dce7d3]">Search your engineering notes</div><p className="mt-2 text-[11px] leading-5 text-[#98a197]">Ask where you saved a command, code pattern, or configuration. Results link directly to the matching snippet.</p><div className="mt-4 space-y-2"><div className="eyebrow">TRY ASKING</div>{[{ label: 'Where did I save my React form pattern?', query: 'React form' }, { label: 'Find my Laravel validation notes', query: 'Laravel validation' }, { label: 'Search for a pull request template', query: 'pull request template' }].map(item => <button key={item.label} onClick={() => setCoachQuery(item.query)} className="block rounded-lg border border-[#303730] px-3 py-2 text-left text-[10px] text-[#aeb6ad] hover:border-[#66765a]">{item.label}</button>)}</div></div>}{coachMessages.map((message, index) => <div key={`${message.role}-${index}`} className={message.role === 'user' ? 'ml-8 rounded-2xl rounded-br-sm bg-[#2a3325] p-3 text-xs leading-5 text-[#e3ebdc]' : 'mr-4 rounded-2xl rounded-bl-sm border border-[#303730] bg-[#1c211d] p-3 text-xs leading-6 text-[#c2cbbf]'}><div>{message.text}</div>{message.role === 'assistant' && <><div className="mt-2 text-[9px] uppercase tracking-wider text-[#737d73]">{message.aiPowered ? 'Gemini · grounded in your saved notes' : 'Local MySQL search'}</div>{message.matches?.length > 0 && <div className="mt-3 space-y-2 border-t border-[#323a32] pt-3">{message.matches.map(match => <button key={match.id} onClick={() => openAssistantSnippet(match.id)} className="flex w-full items-center gap-2 rounded-lg border border-[#46563b] bg-[#222a1e] px-3 py-2 text-left text-[10px] text-[#d9edc8] hover:border-[#c6f36b]"><span className="text-[#c6f36b]">↗</span><span className="min-w-0 flex-1 truncate">View {match.title}</span><span className="text-[#879482]">Open</span></button>)}</div>}</>}</div>)}{coachLoading && <div className="mr-10 rounded-xl border border-[#303730] bg-[#1c211d] p-3 text-[11px] text-[#9da79a]">Searching your saved notes…</div>}</div><form onSubmit={submitCoach} className="border-t border-[#2c322d] p-4"><div className="flex gap-2"><input value={coachQuery} onChange={event => setCoachQuery(event.target.value)} className="input-dark min-w-0 flex-1 rounded-lg px-3 py-2.5 text-xs" placeholder="Ask about a saved snippet…"/><button disabled={coachLoading} className="lime-button rounded-lg px-3 text-xs font-semibold disabled:opacity-50">Send</button></div><div className="mt-2 text-[9px] text-[#717970]">With a Gemini API key, your question and matching snippets are sent to Gemini for a grounded answer.</div></form></aside></div>}
-        <button onClick={() => setCoachOpen(true)} aria-label="Open floating AI deep search" title="Search your saved notes" className="fixed bottom-5 right-5 z-30 flex h-14 w-14 items-center justify-center rounded-full border border-[#e0ffad] bg-[#c6f36b] text-2xl text-[#171b13] shadow-[0_8px_40px_#c6f36b38] transition hover:scale-105 hover:bg-[#d6ff83] sm:bottom-7 sm:right-7">✳<span className="absolute -right-0.5 -top-0.5 h-3.5 w-3.5 rounded-full border-2 border-[#101211] bg-[#8bd45d]"></span></button>
 
         {modal && <div className="modal-backdrop fixed inset-0 z-50 flex items-center justify-center p-4" onMouseDown={event => { if (event.target === event.currentTarget) setModal(null); }}>
             {modal.type === 'snippet' && <form className="panel fade-in max-h-[90vh] w-full max-w-xl overflow-y-auto p-5 md:p-6" onSubmit={async event => { event.preventDefault(); const form = new FormData(event.currentTarget); let image = ''; try { if (form.get('image')?.size) image = await readImageFile(form.get('image')); } catch (error) { alert(error.message); return; } const snippet = { id: `s-${Date.now()}`, title: form.get('title'), description: form.get('description'), code: form.get('code'), image, stacks: form.getAll('stacks'), createdAt: new Date().toISOString().slice(0, 10) }; setData(value => ({ ...value, snippets: [snippet, ...value.snippets] })); setModal(null); setPage('stacks'); setActiveStack(null); }}><div className="flex items-start justify-between"><div><div className="eyebrow">PERSONAL REFERENCE LIBRARY</div><h2 className="mt-1 font-display text-xl font-semibold">New snippet card</h2></div><button type="button" onClick={() => setModal(null)} className="text-xl text-[#8f9790]">×</button></div><label className="mt-5 block text-[11px] text-[#b7beb7]">Title<input name="title" required maxLength="100" className="input-dark mt-1.5 w-full rounded-lg px-3 py-2.5 text-xs" placeholder="e.g. Handle a missing record"/></label><label className="mt-4 block text-[11px] text-[#b7beb7]">Description<textarea name="description" required maxLength="300" className="input-dark mt-1.5 min-h-16 w-full rounded-lg px-3 py-2.5 text-xs" placeholder="When is this useful?"/></label><label className="mt-4 block text-[11px] text-[#b7beb7]">Code or notes<textarea name="code" required className="code-surface mt-1.5 min-h-32 w-full rounded-lg p-3 text-xs leading-5 text-[#d2ddd0]" placeholder="Paste code, CLI commands, or a short Markdown note..."/></label><label className="mt-4 block text-[11px] text-[#b7beb7]">Screenshot or image <span className="text-[#727b73]">(optional, max 600 KB)</span><input name="image" type="file" accept="image/*" className="mt-2 block w-full text-[10px] text-[#9ca59d] file:mr-3 file:rounded-lg file:border-0 file:bg-[#293127] file:px-3 file:py-2 file:text-[10px] file:text-[#d4e7c3]"/></label><div className="mt-4 text-[11px] text-[#b7beb7]">Tag to stacks <span className="ml-1 text-[#707970]">(choose one or more)</span></div><div className="mt-2 flex flex-wrap gap-2">{data.stacks.map(stack => <label key={stack.id} className="flex cursor-pointer items-center gap-2 rounded-lg border border-[#343a35] px-2.5 py-2 text-[10px]"><input type="checkbox" name="stacks" value={stack.id} className="accent-[#c6f36b]"/>{stack.name}</label>)}</div><div className="mt-6 flex justify-end gap-2"><button type="button" onClick={() => setModal(null)} className="ghost-button rounded-lg px-4 py-2 text-xs">Cancel</button><button className="lime-button rounded-lg px-4 py-2 text-xs font-semibold">Save snippet</button></div></form>}
