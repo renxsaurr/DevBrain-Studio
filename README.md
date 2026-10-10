@@ -38,7 +38,7 @@ Open the local address printed by Artisan, usually `http://127.0.0.1:8000`. Afte
 
 - Explore tech stacks organized by category.
 - Create and find snippet cards organized within a stack.
-- Add an optional image to any snippet or stack
+- Add an optional image to any snippet or stack.
 - Modify the home banner image to your liking. 
 - Track saved snippet and stack totals, and back up or restore your data using JSON files.
 ____________________________________________________________________________________________________________________________ 
