@@ -1,6 +1,6 @@
 # DevBrain Studio
 
-A local developer workspace for organizing tech stacks and reusable code notes, built with Laravel, React, and Tailwind. Workspace data is stored in MySQL, with a browser-local backup and JSON export/restore.
+A local development workspace for managing tech stacks and reusable code snippets, built using Laravel, React, and Tailwind CSS. It uses MySQL to store workspace data and supports browser-based backups, along with JSON data export and restoration.
 
 ## XAMPP setup
 
