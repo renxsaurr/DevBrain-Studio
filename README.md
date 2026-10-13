@@ -1,6 +1,6 @@
 # DevBrain Studio
 
-A local developer workspace for organizing tech stacks and reusable code notes, built with Laravel, React, and Tailwind. Workspace data is stored in MySQL, with a browser-local backup and JSON export/restore.
+A local development workspace for managing tech stacks and reusable code snippets, built using Laravel, React, and Tailwind CSS. It uses MySQL to store workspace data and supports browser-based backups, along with JSON data export and restoration.
 
 ## XAMPP setup
 
@@ -36,8 +36,9 @@ Open the local address printed by Artisan, usually `http://127.0.0.1:8000`. Afte
 
 ## Features
 
-- Browse tech stacks by category.
-- Create and search snippet cards within a stack.
-- Attach an optional image to a snippet or stack.
-- Change the home banner image.
-- View saved snippet and stack counts, and export or restore a JSON backup.
+- Explore tech stacks organized by category.
+- Create and find snippet cards organized within a stack.
+- Add an optional image to any snippet or stack.
+- Modify the home banner image to your liking. 
+- Track saved snippet and stack totals, and back up or restore your data using JSON files.
+____________________________________________________________________________________________________________________________ 
