@@ -85,6 +85,23 @@ body, .app-shell, .main-area, .main-area:has(.simple-dashboard) { background:#ff
 .pixel-hero-title > div { padding-bottom:52px; }
 .pixel-hero-title > div > div:last-child { color:#101d14; text-shadow:0 1px #fff; }
 .simple-dashboard-grid { max-width:1180px; margin-inline:auto; padding:68px 24px 0; }
+.card-scroll-region {
+    min-height:0;
+    max-height:calc(100vh - 330px);
+    overflow-x:hidden;
+    overflow-y:auto;
+    overscroll-behavior:contain;
+    scrollbar-width:thin;
+    scrollbar-color:#b6c3b5 transparent;
+    padding:2px 4px 8px 2px;
+}
+.simple-dashboard .card-scroll-region { max-height:calc(100vh - 390px); }
+.simple-dashboard .stack-card-scroll-region { max-height:min(490px, calc(100vh - 390px)); }
+.stack-library-scroll-region { max-height:190px; }
+.card-scroll-region::-webkit-scrollbar { width:8px; }
+.card-scroll-region::-webkit-scrollbar-track { background:transparent; }
+.card-scroll-region::-webkit-scrollbar-thumb { border:2px solid transparent; border-radius:999px; background:#bdc9bc; background-clip:padding-box; }
+.card-scroll-region::-webkit-scrollbar-thumb:hover { background:#a8d443; background-clip:padding-box; }
 .simple-card, .panel, .panel-soft, .focus-card { color:#2c3830; background:#fff !important; border-color:#e4e9e4 !important; box-shadow:0 2px 8px #2134210b; }
 .progress-track { background:#edf1ed !important; }
 .code-surface { color:#27332b; background:#f6f8f6 !important; border-color:#e2e8e2 !important; }
@@ -105,6 +122,10 @@ body, .app-shell, .main-area, .main-area:has(.simple-dashboard) { background:#ff
     .pixel-hero-title { padding-left:14px; }
     .pixel-hero-title > svg { height:106px; width:80px; }
     .pixel-hero-title > div { padding-bottom:52px; }
+    .card-scroll-region { max-height:calc(100vh - 300px); }
+    .simple-dashboard .card-scroll-region { max-height:calc(100vh - 450px); }
+    .simple-dashboard .stack-card-scroll-region { max-height:min(490px, calc(100vh - 450px)); }
+    .stack-library-scroll-region { max-height:190px; }
 }
 
 /* Keep navigation and copy high contrast across every screen. */
